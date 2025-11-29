@@ -47,6 +47,20 @@
               placeholder="예) 짱구가 도시락을 자랑하는 장면을 더 생생하게 써 줘"
               required
             ></textarea>
+            <div class="llm-options">
+              <label class="llm-checkbox">
+                <input type="checkbox" id="llmThinking" name="thinking" />
+                Thinking 모델 사용
+              </label>
+              <label class="llm-select" for="llmEffort">
+                사고 강도
+                <select id="llmEffort" name="effort">
+                  <option value="low">낮음</option>
+                  <option value="medium" selected>중간</option>
+                  <option value="high">높음</option>
+                </select>
+              </label>
+            </div>
             <button type="submit" id="llmSubmit">LM Studio에게 요청하기</button>
           </form>
           <p class="llm-status" id="llmStatus" aria-live="polite"></p>

@@ -204,6 +204,34 @@ button:active {
   gap: 0.65rem;
 }
 
+.llm-options {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.llm-checkbox {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.llm-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.llm-select select {
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.35rem 0.5rem;
+  background: #fff;
+}
+
 .llm-form textarea {
   width: 100%;
   resize: vertical;

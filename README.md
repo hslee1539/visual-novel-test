@@ -25,6 +25,7 @@
    export LM_STUDIO_MODEL="Your-Model-Name"
    ```
 3. Flask 서버를 실행하면 사이드바의 "LM Studio 제안" 영역에서 프롬프트를 입력해 응답을 확인할 수 있습니다.
+4. Thinking 모델을 사용할 경우 사이드바에서 체크박스를 켜고 사고 강도를 선택하면, 요청 바디에 `reasoning`이 포함되어 대응 모델에서 추론형 응답을 받을 수 있습니다.
 
 ## 구조
 - `app.py`: Flask 앱과 스토리 데이터, API 엔드포인트를 정의합니다.

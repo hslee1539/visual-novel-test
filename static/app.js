@@ -7,6 +7,8 @@ const historyList = document.getElementById("history");
 const backgroundLayer = document.getElementById("background");
 const llmForm = document.getElementById("llmForm");
 const llmPromptInput = document.getElementById("llmPrompt");
+const llmThinkingInput = document.getElementById("llmThinking");
+const llmEffortSelect = document.getElementById("llmEffort");
 const llmStatus = document.getElementById("llmStatus");
 const llmResult = document.getElementById("llmResult");
 
@@ -59,11 +61,11 @@ async function loadStory() {
 
 loadStory();
 
-async function requestLLM(prompt) {
+async function requestLLM(payload) {
   const response = await fetch("/api/llm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(payload),
   });
   return response.json().then((data) => ({ ok: response.ok, data }));
 }
@@ -77,12 +79,21 @@ if (llmForm) {
       return;
     }
 
+    const useThinking = llmThinkingInput?.checked;
+    const reasoningEffort = llmEffortSelect?.value || "medium";
+
+    const payload = {
+      prompt,
+      use_thinking: useThinking,
+      reasoning_effort: reasoningEffort,
+    };
+
     llmStatus.textContent = "LM Studio에 요청 중...";
     llmResult.textContent = "";
     llmForm.querySelector("button").disabled = true;
 
     try {
-      const { ok, data } = await requestLLM(prompt);
+      const { ok, data } = await requestLLM(payload);
       if (ok && data.response) {
         llmStatus.textContent = "완료!";
         llmResult.textContent = data.response;

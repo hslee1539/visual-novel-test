@@ -260,6 +260,9 @@ def llm_suggest() -> tuple[Any, int] | Any:
     if not prompt:
         return jsonify({"error": "프롬프트가 비어 있어요."}), 400
 
+    use_thinking = bool(payload.get("use_thinking"))
+    reasoning_effort = (payload.get("reasoning_effort") or "medium").strip() or "medium"
+
     messages = [
         {
             "role": "system",
@@ -271,15 +274,21 @@ def llm_suggest() -> tuple[Any, int] | Any:
         {"role": "user", "content": prompt},
     ]
 
+    request_body: dict[str, Any] = {
+        "model": LM_STUDIO_MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": int(payload.get("max_tokens", 240)),
+    }
+
+    if use_thinking:
+        request_body["reasoning"] = {"effort": reasoning_effort}
+        request_body["max_output_tokens"] = request_body["max_tokens"]
+
     try:
         response = requests.post(
             LM_STUDIO_ENDPOINT,
-            json={
-                "model": LM_STUDIO_MODEL,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": int(payload.get("max_tokens", 240)),
-            },
+            json=request_body,
             timeout=20,
         )
         response.raise_for_status()
@@ -287,13 +296,11 @@ def llm_suggest() -> tuple[Any, int] | Any:
         choice = data.get("choices", [{}])[0]
         message_data = choice.get("message") or {}
         content = (message_data.get("content") or "").strip()
-        reasoning = (message_data.get("reasoning") or "").strip()
 
-        final_message = content or reasoning
-        if not final_message:
+        if not content:
             raise ValueError("응답 형식이 올바르지 않습니다.")
 
-        return jsonify({"response": final_message})
+        return jsonify({"response": content})
     except requests.RequestException as exc:
         return (
             jsonify({"error": "LM Studio 요청에 실패했어요.", "detail": str(exc)}),
