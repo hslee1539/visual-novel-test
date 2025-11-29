@@ -285,10 +285,15 @@ def llm_suggest() -> tuple[Any, int] | Any:
         response.raise_for_status()
         data = response.json()
         choice = data.get("choices", [{}])[0]
-        message = (choice.get("message") or {}).get("content")
-        if not message:
+        message_data = choice.get("message") or {}
+        content = (message_data.get("content") or "").strip()
+        reasoning = (message_data.get("reasoning") or "").strip()
+
+        final_message = content or reasoning
+        if not final_message:
             raise ValueError("응답 형식이 올바르지 않습니다.")
-        return jsonify({"response": message})
+
+        return jsonify({"response": final_message})
     except requests.RequestException as exc:
         return (
             jsonify({"error": "LM Studio 요청에 실패했어요.", "detail": str(exc)}),
