@@ -56,14 +56,27 @@ a {
 .scene__background {
   position: absolute;
   inset: 0;
-  transition: background 250ms ease;
+  transition: background 250ms ease, transform 600ms ease;
+  background-size: cover;
+  filter: saturate(1.05);
+}
+
+.scene__background::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.4), transparent 32%),
+    radial-gradient(circle at 80% 10%, rgba(255, 255, 255, 0.28), transparent 30%),
+    radial-gradient(circle at 35% 75%, rgba(255, 255, 255, 0.2), transparent 32%);
+  pointer-events: none;
 }
 
 .scene__content {
   position: relative;
   padding: 2rem;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .scene__speaker {
@@ -81,6 +94,29 @@ a {
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.06);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.scene__prompt {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.04);
+}
+
+.scene__prompt-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+.scene__prompt-text {
+  margin: 0;
+  line-height: 1.5;
+  color: #1f2937;
 }
 
 .sidebar {
