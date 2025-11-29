@@ -9,7 +9,7 @@
   <body>
     <header class="topbar">
       <h1>{{ title }}</h1>
-      <p class="subtitle">선택지에 따라 달라지는 짧은 새벽 이야기</p>
+      <p class="subtitle">짱구와 친구들이 만들어가는 소풍 대소동</p>
     </header>
     <main class="layout">
       <section class="scene" id="scene" aria-live="polite">
@@ -17,6 +17,10 @@
         <div class="scene__content">
           <p class="scene__speaker" id="speaker"></p>
           <p class="scene__dialogue" id="dialogue"></p>
+          <div class="scene__prompt" aria-live="polite">
+            <p class="scene__prompt-label">디퓨전 프롬프트</p>
+            <p class="scene__prompt-text" id="prompt"></p>
+          </div>
         </div>
       </section>
       <aside class="sidebar">

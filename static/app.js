@@ -1,6 +1,7 @@
 const sceneElement = document.getElementById("scene");
 const speakerElement = document.getElementById("speaker");
 const dialogueElement = document.getElementById("dialogue");
+const promptElement = document.getElementById("prompt");
 const choicesContainer = document.getElementById("choices");
 const historyList = document.getElementById("history");
 const backgroundLayer = document.getElementById("background");
@@ -15,6 +16,7 @@ function setScene(sceneId) {
 
   speakerElement.textContent = scene.speaker;
   dialogueElement.textContent = scene.dialogue;
+  promptElement.textContent = scene.prompt ?? "배경 프롬프트가 준비 중이에요.";
   backgroundLayer.style.background = scene.background;
 
   const historyEntry = document.createElement("li");
