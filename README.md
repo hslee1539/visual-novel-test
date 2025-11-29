@@ -15,6 +15,7 @@
    ```
 
 3. 예시 요청
+   - 서버 상태 확인: `GET /`
    - 스토리 전체 보기: `GET /api/story`
    - 특정 장면 보기: `GET /api/story/<scene_id>`
    - 선택 전송: `POST /api/story/<scene_id>/choice` with body `{ "choiceId": "..." }`

@@ -91,6 +91,21 @@ def serialize_scene(scene: Scene) -> dict:
 app = Flask(__name__)
 
 
+@app.get("/")
+def index():
+    """간단한 환영 메시지와 주요 엔드포인트 안내."""
+    return jsonify(
+        {
+            "message": "비주얼 노벨 테스트 서버가 실행 중입니다.",
+            "endpoints": {
+                "story_overview": "/api/story",
+                "scene": "/api/story/<scene_id>",
+                "choice": "/api/story/<scene_id>/choice",
+            },
+        }
+    )
+
+
 @app.get("/api/story")
 def get_story_overview():
     """스토리의 시작 지점과 장면 목록을 반환한다."""
