@@ -1,8 +1,17 @@
 from __future__ import annotations
 
-from flask import Flask, jsonify, render_template
+import os
+from typing import Any
+
+import requests
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
+
+LM_STUDIO_ENDPOINT = os.getenv(
+    "LM_STUDIO_ENDPOINT", "http://localhost:1234/v1/chat/completions"
+)
+LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "local-model")
 
 story_data = {
     "title": "짱구네 소풍 대작전",
@@ -242,6 +251,54 @@ def index() -> str:
 @app.get("/api/story")
 def get_story() -> dict:
     return jsonify(story_data)
+
+
+@app.post("/api/llm")
+def llm_suggest() -> tuple[Any, int] | Any:
+    payload = request.get_json(silent=True) or {}
+    prompt = (payload.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"error": "프롬프트가 비어 있어요."}), 400
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "너는 밝고 공감가는 내레이터야."
+                " 비주얼 노벨 장면을 위한 짧은 묘사나 대사를 만들어 줘."
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+    try:
+        response = requests.post(
+            LM_STUDIO_ENDPOINT,
+            json={
+                "model": LM_STUDIO_MODEL,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": int(payload.get("max_tokens", 240)),
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        data = response.json()
+        choice = data.get("choices", [{}])[0]
+        message = (choice.get("message") or {}).get("content")
+        if not message:
+            raise ValueError("응답 형식이 올바르지 않습니다.")
+        return jsonify({"response": message})
+    except requests.RequestException as exc:
+        return (
+            jsonify({"error": "LM Studio 요청에 실패했어요.", "detail": str(exc)}),
+            502,
+        )
+    except (ValueError, TypeError, IndexError) as exc:  # pragma: no cover - defensive
+        return (
+            jsonify({"error": "LM Studio 응답을 해석하지 못했어요.", "detail": str(exc)}),
+            502,
+        )
 
 
 if __name__ == "__main__":
