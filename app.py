@@ -285,17 +285,29 @@ def llm_suggest() -> tuple[Any, int] | Any:
         request_body["reasoning"] = {"effort": reasoning_effort}
         request_body["max_output_tokens"] = request_body["max_tokens"]
 
-    try:
+    def request_content(body: dict[str, Any]) -> str:
         response = requests.post(
             LM_STUDIO_ENDPOINT,
-            json=request_body,
+            json=body,
             timeout=20,
         )
         response.raise_for_status()
         data = response.json()
         choice = data.get("choices", [{}])[0]
         message_data = choice.get("message") or {}
-        content = (message_data.get("content") or "").strip()
+        return (message_data.get("content") or "").strip()
+
+    try:
+        content = request_content(request_body)
+
+        if use_thinking and not content:
+            retry_body = {
+                "model": request_body["model"],
+                "messages": request_body["messages"],
+                "temperature": request_body["temperature"],
+                "max_tokens": request_body["max_tokens"],
+            }
+            content = request_content(retry_body)
 
         if not content:
             raise ValueError("응답 형식이 올바르지 않습니다.")
