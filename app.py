@@ -7,7 +7,7 @@ import re
 from typing import Any, Dict, List
 
 import requests
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 
@@ -16,8 +16,6 @@ logger = logging.getLogger(__name__)
 
 LM_STUDIO_URL = os.environ.get("LM_STUDIO_URL", "http://localhost:1234/v1/chat/completions")
 LM_STUDIO_MODEL = os.environ.get("LM_STUDIO_MODEL", "lmstudio-community/Meta-Llama-3-8B-Instruct")
-
-story_data: Dict[str, Any] | None = None
 
 
 def extract_json_content(text: str) -> str:
@@ -34,123 +32,6 @@ def extract_json_content(text: str) -> str:
         return curly.group(0)
 
     return text
-
-
-def call_lm_studio(messages: List[Dict[str, str]], temperature: float = 0.6) -> str:
-    logger.debug("LM Studio 요청: %s", messages)
-    response = requests.post(
-        LM_STUDIO_URL,
-        headers={"Content-Type": "application/json"},
-        json={
-            "model": LM_STUDIO_MODEL,
-            "messages": messages,
-            "temperature": temperature,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    logger.debug("LM Studio 응답 수신: %s", payload)
-    return payload["choices"][0]["message"]["content"]
-
-
-def scenario_agent(theme: str) -> Dict[str, Any]:
-    prompt = (
-        "너는 어린이 만화풍 비주얼 노벨의 시나리오 설계 에이전트야. "
-        "브랜치가 4~6개인 짧은 소풍 이야기를 설계하고, JSON으로만 답해. "
-        "각 장면은 id, 상황 요약(summary), 다음 선택지 배열(choices)로 구성해. "
-        "choices는 최대 2개이고, 마지막 장면은 빈 배열이야. "
-        "start_scene은 항상 첫 장면 id를 넣어."
-    )
-    output = call_lm_studio(
-        [
-            {"role": "system", "content": prompt},
-            {
-                "role": "user",
-                "content": (
-                    "다음 JSON 형식으로만 응답해:\n"
-                    "{\n"
-                    "  \"title\": \"...\",\n"
-                    "  \"start_scene\": \"scene_1\",\n"
-                    "  \"scenes\": [\n"
-                    "    {\n"
-                    "      \"id\": \"scene_1\",\n"
-                    "      \"summary\": \"...\",\n"
-                    "      \"choices\": [ {\"text\": \"...\", \"next\": \"scene_2\"} ]\n"
-                    "    }\n"
-                    "  ]\n"
-                    "}\n"
-                    f"주제: {theme}"
-                ),
-            },
-        ]
-    )
-    cleaned = extract_json_content(output)
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        logger.warning("시나리오 파싱 실패, 원문: %s", output)
-        raise exc
-
-    logger.info("시나리오 설계 완료: %s", parsed.get("title", theme))
-    return parsed
-
-
-def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
-    prompt = (
-        "너는 시나리오에 맞춰 캐릭터의 대사와 연출을 완성하는 에이전트야. "
-        "대사 톤은 명랑하고 어린이 만화풍이며, CSS linear-gradient 배경과 디퓨전 이미지를 위한 프롬프트도 포함해. "
-        "JSON 외의 문장은 절대 쓰지 마."
-    )
-    output = call_lm_studio(
-        [
-            {"role": "system", "content": prompt},
-            {
-                "role": "user",
-                "content": (
-                    "다음 키만 포함된 JSON으로 응답해:\n"
-                    "{\n"
-                    "  \"speaker\": \"...\",\n"
-                    "  \"dialogue\": \"...\",\n"
-                    "  \"background\": \"linear-gradient(...)\",\n"
-                    "  \"prompt\": \"이미지 프롬프트\"\n"
-                    "}\n"
-                    f"전체 주제: {theme}\n"
-                    f"장면 요약: {scene['summary']}\n"
-                    f"선택지: {scene.get('choices', [])}"
-                ),
-            },
-        ],
-        temperature=0.7,
-    )
-    cleaned = extract_json_content(output)
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        logger.warning("캐릭터 파싱 실패 (scene: %s), 원문: %s", scene.get("id"), output)
-        raise exc
-
-    logger.info("캐릭터 연출 생성 완료 (scene: %s, speaker: %s)", scene.get("id"), parsed.get("speaker"))
-    return parsed
-
-
-def build_story(theme: str = "짱구네 소풍 대작전") -> Dict[str, Any]:
-    logger.info("스토리 생성 시작: %s", theme)
-    outline = scenario_agent(theme)
-    scenes: Dict[str, Any] = {}
-
-    for scene in outline.get("scenes", []):
-        details = character_agent(theme, scene)
-        scenes[scene["id"]] = {**details, "choices": scene.get("choices", [])}
-
-    story = {
-        "title": outline.get("title", theme),
-        "start": outline.get("start_scene", outline.get("scenes", [{}])[0].get("id", "")),
-        "scenes": scenes,
-    }
-
-    logger.info("스토리 생성 완료: %s (장면 수: %d)", story.get("title"), len(scenes))
-    return story
 
 
 def fallback_story() -> Dict[str, Any]:
@@ -186,16 +67,6 @@ def fallback_story() -> Dict[str, Any]:
                 "choices": [
                     {"text": "과자를 주머니에 몰래 숨긴다", "next": "hide_snack"},
                     {"text": "친구들과 나누기로 한다", "next": "share_snack"},
-                ],
-            },
-            "hide_snack": {
-                "speaker": "짱구",
-                "dialogue": "주머니가 볼록해졌지만 들키지 않겠지?",
-                "background": "linear-gradient(135deg, #fff4d9 0%, #ffe8c4 50%, #ffd9bd 100%)",
-                "prompt": "주머니 속에 과자를 숨기며 몰래 웃는 짱구, 배경에 거실 창문으로 들어오는 햇살, 코믹하고 밝은 색감",
-                "choices": [
-                    {"text": "버스에서 몰래 먹는다", "next": "tummyache"},
-                    {"text": "버스에서 친구들과 나눈다", "next": "bus_gossip"},
                 ],
             },
             "share_snack": {
@@ -384,25 +255,178 @@ def fallback_story() -> Dict[str, Any]:
     }
 
 
+story_state: Dict[str, Any] = {
+    "theme": "짱구네 소풍 대작전",
+    "history": [],
+    "current_id": None,
+    "use_fallback": False,
+    "fallback": fallback_story(),
+}
+
+
+def call_lm_studio(messages: List[Dict[str, str]], temperature: float = 0.6) -> str:
+    logger.debug("LM Studio 요청: %s", messages)
+    response = requests.post(
+        LM_STUDIO_URL,
+        headers={"Content-Type": "application/json"},
+        json={
+            "model": LM_STUDIO_MODEL,
+            "messages": messages,
+            "temperature": temperature,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    logger.debug("LM Studio 응답 수신: %s", payload)
+    return payload["choices"][0]["message"]["content"]
+
+
+def scenario_step_agent(theme: str, history: List[Dict[str, Any]], choice_text: str | None) -> Dict[str, Any]:
+    history_prompt = "\n".join(
+        [f"- 선택지 '{entry['choice']}' 후 장면 요약: {entry['summary']}" for entry in history if entry.get("choice")]
+    )
+    prompt = (
+        "너는 어린이 만화풍 비주얼 노벨의 시나리오 설계 에이전트야. "
+        "이전 선택과 장면을 참고해 다음 한 장면만 설계하고, JSON으로만 답해. "
+        "choices는 0~2개이며 text만 포함하고, 선택지가 없으면 이야기를 종료해."
+    )
+    user_message = (
+        "다음 JSON 형식으로만 응답해:\n"
+        "{\n"
+        "  \"summary\": \"이번 장면 요약\",\n"
+        "  \"choices\": [ {\"text\": \"...\"} ]\n"
+        "}\n"
+        f"전체 주제: {theme}\n"
+        f"이전 기록:\n{history_prompt}\n"
+        f"사용자가 방금 고른 선택지: {choice_text or '없음'}"
+    )
+    output = call_lm_studio(
+        [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_message},
+        ]
+    )
+    cleaned = extract_json_content(output)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.warning("시나리오 파싱 실패, 원문: %s", output)
+        raise exc
+
+    logger.info("장면 설계 완료 (선택지 수: %d)", len(parsed.get("choices", [])))
+    return parsed
+
+
+def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
+    prompt = (
+        "너는 시나리오에 맞춰 캐릭터의 대사와 연출을 완성하는 에이전트야. "
+        "대사 톤은 명랑하고 어린이 만화풍이며, CSS linear-gradient 배경과 디퓨전 이미지를 위한 프롬프트도 포함해. "
+        "JSON 외의 문장은 절대 쓰지 마."
+    )
+    output = call_lm_studio(
+        [
+            {"role": "system", "content": prompt},
+            {
+                "role": "user",
+                "content": (
+                    "다음 키만 포함된 JSON으로 응답해:\n"
+                    "{\n"
+                    "  \"speaker\": \"...\",\n"
+                    "  \"dialogue\": \"...\",\n"
+                    "  \"background\": \"linear-gradient(...)\",\n"
+                    "  \"prompt\": \"이미지 프롬프트\"\n"
+                    "}\n"
+                    f"전체 주제: {theme}\n"
+                    f"장면 요약: {scene['summary']}\n"
+                    f"선택지: {scene.get('choices', [])}"
+                ),
+            },
+        ],
+        temperature=0.7,
+    )
+    cleaned = extract_json_content(output)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.warning("캐릭터 파싱 실패 (scene: %s), 원문: %s", scene.get("id"), output)
+        raise exc
+
+    logger.info("캐릭터 연출 생성 완료 (scene: %s, speaker: %s)", scene.get("id"), parsed.get("speaker"))
+    return parsed
+
+
+def reset_story_state(theme: str = "짱구네 소풍 대작전") -> None:
+    story_state.update(
+        {
+            "theme": theme,
+            "history": [],
+            "current_id": None,
+            "use_fallback": False,
+            "fallback": fallback_story(),
+        }
+    )
+
+
+def fallback_scene(choice_text: str | None) -> Dict[str, Any]:
+    fallback = story_state["fallback"]
+    if story_state["current_id"] is None:
+        story_state["current_id"] = fallback["start"]
+    else:
+        current_choices = fallback["scenes"][story_state["current_id"]].get("choices", [])
+        if current_choices:
+            next_id = next(
+                (c["next"] for c in current_choices if c.get("text") == choice_text),
+                current_choices[0]["next"],
+            )
+            story_state["current_id"] = next_id
+
+    scene = fallback["scenes"][story_state["current_id"]]
+    scene_payload = {**scene, "id": story_state["current_id"]}
+    logger.info("폴백 장면 반환: %s", story_state["current_id"])
+    return scene_payload
+
+
+def generate_scene(choice_text: str | None = None) -> Dict[str, Any]:
+    if story_state.get("use_fallback"):
+        return fallback_scene(choice_text)
+
+    try:
+        step = scenario_step_agent(story_state["theme"], story_state["history"], choice_text)
+        details = character_agent(
+            story_state["theme"],
+            {"summary": step.get("summary", ""), "choices": step.get("choices", [])},
+        )
+        scene_id = f"scene_{len(story_state['history']) + 1}"
+        scene = {**details, "choices": step.get("choices", []), "id": scene_id, "summary": step.get("summary", "")}
+        story_state["current_id"] = scene_id
+        story_state["history"].append({"id": scene_id, **scene, "choice": choice_text})
+        logger.info("장면 생성 완료: %s", scene_id)
+        return scene
+    except Exception as exc:  # pragma: no cover - LM Studio 통신 오류 핸들링
+        logger.warning("LM Studio 호출 실패, 폴백 스토리 사용: %s", exc)
+        story_state["use_fallback"] = True
+        return fallback_scene(choice_text)
+
+
 @app.get("/")
 def index() -> str:
     return render_template("index.html", title="비주얼 노벨 생성기")
 
 
-@app.get("/api/story")
-def get_story() -> dict:
-    global story_data
+@app.get("/api/story/start")
+def start_story() -> dict:
+    reset_story_state()
+    scene = generate_scene()
+    return jsonify({"scene": scene})
 
-    if story_data:
-        return jsonify(story_data)
 
-    try:
-        story_data = build_story()
-    except Exception as exc:  # pragma: no cover - LM Studio 통신 오류 핸들링
-        logger.warning("LM Studio 호출 실패, 폴백 스토리 사용: %s", exc)
-        story_data = fallback_story()
-
-    return jsonify(story_data)
+@app.post("/api/story/next")
+def next_scene() -> dict:
+    payload = request.get_json(force=True) or {}
+    choice_text = payload.get("choice")
+    scene = generate_scene(choice_text)
+    return jsonify({"scene": scene})
 
 
 if __name__ == "__main__":

@@ -6,14 +6,9 @@ const choicesContainer = document.getElementById("choices");
 const historyList = document.getElementById("history");
 const backgroundLayer = document.getElementById("background");
 
-let storyData = null;
-let currentSceneId = null;
 const historyItems = [];
 
-function setScene(sceneId) {
-  currentSceneId = sceneId;
-  const scene = storyData.scenes[sceneId];
-
+function setScene(scene) {
   speakerElement.textContent = scene.speaker;
   dialogueElement.textContent = scene.dialogue;
   promptElement.textContent = scene.prompt ?? "배경 프롬프트가 준비 중이에요.";
@@ -42,15 +37,25 @@ function renderChoices(choices) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = choice.text;
-    button.addEventListener("click", () => setScene(choice.next));
+    button.addEventListener("click", () => requestNextScene(choice.text));
     choicesContainer.appendChild(button);
   });
 }
 
-async function loadStory() {
-  const response = await fetch("/api/story");
-  storyData = await response.json();
-  setScene(storyData.start);
+async function startStory() {
+  const response = await fetch("/api/story/start");
+  const payload = await response.json();
+  setScene(payload.scene);
 }
 
-loadStory();
+async function requestNextScene(choiceText) {
+  const response = await fetch("/api/story/next", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ choice: choiceText }),
+  });
+  const payload = await response.json();
+  setScene(payload.scene);
+}
+
+startStory();
