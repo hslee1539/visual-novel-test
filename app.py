@@ -313,6 +313,16 @@ def llm_suggest() -> tuple[Any, int] | Any:
         if isinstance(content, str):
             return content.strip()
 
+        if isinstance(message_data, dict):
+            reasoning_text = message_data.get("reasoning")
+            if isinstance(reasoning_text, str) and reasoning_text.strip():
+                return reasoning_text.strip()
+
+        if isinstance(choice, dict):
+            fallback_text = choice.get("content") or choice.get("text")
+            if isinstance(fallback_text, str) and fallback_text.strip():
+                return fallback_text.strip()
+
         return ""
 
     def summarize_response(data: Any) -> str:
