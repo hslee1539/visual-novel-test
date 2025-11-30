@@ -125,7 +125,8 @@ a {
 }
 
 .choices,
-.history {
+.history,
+.llm-box {
   background: #ffffff;
   padding: 1rem 1.25rem;
   border-radius: 14px;
@@ -134,7 +135,8 @@ a {
 }
 
 .choices h2,
-.history h2 {
+.history h2,
+.llm-box h2 {
   margin-top: 0;
   margin-bottom: 0.5rem;
   font-size: 1.1rem;
@@ -188,6 +190,87 @@ button:active {
   background: #f8fafc;
   border-radius: 10px;
   border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.llm-description {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.llm-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.llm-options {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.llm-checkbox {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.llm-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.llm-select select {
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.35rem 0.5rem;
+  background: #fff;
+}
+
+.llm-form textarea {
+  width: 100%;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.75rem 0.85rem;
+  font-size: 1rem;
+  font-family: inherit;
+  background: #f8fafc;
+}
+
+.llm-status {
+  min-height: 1.25rem;
+  margin: 0.35rem 0 0;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.llm-result {
+  margin-top: 0.5rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #111827;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  min-height: 2.5rem;
+  line-height: 1.5;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 900px) {

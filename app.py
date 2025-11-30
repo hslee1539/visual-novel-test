@@ -1,8 +1,18 @@
 from __future__ import annotations
 
-from flask import Flask, jsonify, render_template
+import json
+import os
+from typing import Any
+
+import requests
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
+
+LM_STUDIO_ENDPOINT = os.getenv(
+    "LM_STUDIO_ENDPOINT", "http://localhost:1234/v1/chat/completions"
+)
+LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "local-model")
 
 story_data = {
     "title": "짱구네 소풍 대작전",
@@ -242,6 +252,180 @@ def index() -> str:
 @app.get("/api/story")
 def get_story() -> dict:
     return jsonify(story_data)
+
+
+@app.post("/api/llm")
+def llm_suggest() -> tuple[Any, int] | Any:
+    payload = request.get_json(silent=True) or {}
+    prompt = (payload.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"error": "프롬프트가 비어 있어요."}), 400
+
+    use_thinking = bool(payload.get("use_thinking"))
+    reasoning_effort = (payload.get("reasoning_effort") or "medium").strip() or "medium"
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "너는 밝고 공감가는 내레이터야."
+                " 비주얼 노벨 장면을 위한 짧은 묘사나 대사를 만들어 줘."
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+    request_body: dict[str, Any] = {
+        "model": LM_STUDIO_MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": int(payload.get("max_tokens", 240)),
+    }
+
+    if use_thinking:
+        request_body["reasoning"] = {"effort": reasoning_effort}
+        request_body["max_output_tokens"] = request_body["max_tokens"]
+
+    def extract_content(choice: Any) -> str:
+        if isinstance(choice, str):
+            return choice.strip()
+
+        message_data = choice.get("message") if isinstance(choice, dict) else {}
+
+        if isinstance(message_data, str):
+            return message_data.strip()
+
+        content = message_data.get("content") if isinstance(message_data, dict) else None
+
+        if isinstance(content, list):
+            joined_segments = "".join(
+                segment.get("text", "") if isinstance(segment, dict) else str(segment)
+                for segment in content
+            )
+            if joined_segments.strip():
+                return joined_segments.strip()
+
+        if isinstance(content, dict):
+            text_value = content.get("text")
+            if isinstance(text_value, str) and text_value.strip():
+                return text_value.strip()
+
+        if isinstance(content, str):
+            return content.strip()
+
+        if isinstance(message_data, dict):
+            reasoning_text = message_data.get("reasoning")
+            if isinstance(reasoning_text, str) and reasoning_text.strip():
+                return reasoning_text.strip()
+
+        if isinstance(choice, dict):
+            fallback_text = choice.get("content") or choice.get("text")
+            if isinstance(fallback_text, str) and fallback_text.strip():
+                return fallback_text.strip()
+
+            choice_reasoning = choice.get("reasoning")
+            if isinstance(choice_reasoning, str) and choice_reasoning.strip():
+                return choice_reasoning.strip()
+
+        return ""
+
+    def summarize_response(data: Any) -> str:
+        try:
+            serialized = json.dumps(data, ensure_ascii=False)
+        except TypeError:
+            serialized = str(data)
+        return serialized[:800]
+
+    def extract_from_choices(choices: Any) -> str:
+        if not isinstance(choices, list):
+            return extract_content(choices)
+
+        for choice in choices:
+            text = extract_content(choice)
+            if text:
+                return text
+        return ""
+
+    def request_content(body: dict[str, Any]) -> tuple[str, Any]:
+        response = requests.post(
+            LM_STUDIO_ENDPOINT,
+            json=body,
+            timeout=20,
+        )
+
+        if not response.ok:
+            try:
+                response_detail = response.json()
+            except ValueError:
+                response_detail = response.text
+            raise ValueError(
+                f"LM Studio 응답 오류({response.status_code}): {response_detail}"
+            )
+
+        data = response.json()
+        return extract_from_choices(data.get("choices") or [{}]), data
+
+    try:
+        errors: list[str] = []
+        content = ""
+
+        last_response = ""
+
+        def attempt(body: dict[str, Any], label: str) -> str:
+            nonlocal last_response
+            try:
+                content_result, data = request_content(body)
+                last_response = summarize_response(data)
+
+                if not content_result:
+                    errors.append(
+                        f"{label} 응답에 content가 없어요. 응답 요약: {last_response}"
+                    )
+                return content_result
+            except (requests.RequestException, ValueError) as exc:
+                errors.append(f"{label} 실패: {exc}")
+                return ""
+
+        if use_thinking:
+            content = attempt(request_body, "사고형")
+            if not content:
+                standard_body = {
+                    "model": request_body["model"],
+                    "messages": request_body["messages"],
+                    "temperature": request_body["temperature"],
+                    "max_tokens": request_body["max_tokens"],
+                }
+                content = attempt(standard_body, "사고형 재시도(일반)")
+
+        if not content:
+            content = attempt(
+                {
+                    "model": request_body["model"],
+                    "messages": request_body["messages"],
+                    "temperature": request_body["temperature"],
+                    "max_tokens": request_body["max_tokens"],
+                },
+                "일반 모델",
+            )
+
+        if content:
+            return jsonify({"response": content})
+
+        raise ValueError(
+            "; ".join(errors)
+            or last_response
+            or "응답 형식이 올바르지 않습니다."
+        )
+    except requests.RequestException as exc:
+        return (
+            jsonify({"error": "LM Studio 요청에 실패했어요.", "detail": str(exc)}),
+            502,
+        )
+    except (ValueError, TypeError, IndexError) as exc:  # pragma: no cover - defensive
+        return (
+            jsonify({"error": "LM Studio 응답을 해석하지 못했어요.", "detail": str(exc)}),
+            502,
+        )
 
 
 if __name__ == "__main__":

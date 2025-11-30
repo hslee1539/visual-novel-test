@@ -15,6 +15,18 @@
    ```
 3. 브라우저에서 `http://127.0.0.1:5000`으로 접속합니다.
 
+### LM Studio 연동
+로컬에서 실행 중인 LM Studio의 OpenAI 호환 API를 이용해 장면 문장을 제안받을 수 있습니다.
+
+1. LM Studio에서 `OpenAI compatible server`를 `localhost:1234` 등으로 실행합니다.
+2. 필요하다면 환경 변수를 설정합니다.
+   ```bash
+   export LM_STUDIO_ENDPOINT="http://localhost:1234/v1/chat/completions"
+   export LM_STUDIO_MODEL="Your-Model-Name"
+   ```
+3. Flask 서버를 실행하면 사이드바의 "LM Studio 제안" 영역에서 프롬프트를 입력해 응답을 확인할 수 있습니다.
+4. Thinking 모델을 사용할 경우 사이드바에서 체크박스를 켜고 사고 강도를 선택하면, 요청 바디에 `reasoning`이 포함되어 대응 모델에서 추론형 응답을 받을 수 있습니다.
+
 ## 구조
 - `app.py`: Flask 앱과 스토리 데이터, API 엔드포인트를 정의합니다.
 - `templates/index.html`: 기본 페이지 레이아웃.
