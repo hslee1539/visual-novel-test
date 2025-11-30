@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import Any, Dict, List
@@ -9,6 +10,9 @@ import requests
 from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 LM_STUDIO_URL = os.environ.get("LM_STUDIO_URL", "http://localhost:1234/v1/chat/completions")
 LM_STUDIO_MODEL = os.environ.get("LM_STUDIO_MODEL", "lmstudio-community/Meta-Llama-3-8B-Instruct")
@@ -33,6 +37,7 @@ def extract_json_content(text: str) -> str:
 
 
 def call_lm_studio(messages: List[Dict[str, str]], temperature: float = 0.6) -> str:
+    logger.debug("LM Studio 요청: %s", messages)
     response = requests.post(
         LM_STUDIO_URL,
         headers={"Content-Type": "application/json"},
@@ -45,6 +50,7 @@ def call_lm_studio(messages: List[Dict[str, str]], temperature: float = 0.6) -> 
     )
     response.raise_for_status()
     payload = response.json()
+    logger.debug("LM Studio 응답 수신: %s", payload)
     return payload["choices"][0]["message"]["content"]
 
 
@@ -79,7 +85,15 @@ def scenario_agent(theme: str) -> Dict[str, Any]:
             },
         ]
     )
-    return json.loads(extract_json_content(output))
+    cleaned = extract_json_content(output)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.warning("시나리오 파싱 실패, 원문: %s", output)
+        raise exc
+
+    logger.info("시나리오 설계 완료: %s", parsed.get("title", theme))
+    return parsed
 
 
 def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
@@ -109,10 +123,19 @@ def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
         ],
         temperature=0.7,
     )
-    return json.loads(extract_json_content(output))
+    cleaned = extract_json_content(output)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.warning("캐릭터 파싱 실패 (scene: %s), 원문: %s", scene.get("id"), output)
+        raise exc
+
+    logger.info("캐릭터 연출 생성 완료 (scene: %s, speaker: %s)", scene.get("id"), parsed.get("speaker"))
+    return parsed
 
 
 def build_story(theme: str = "짱구네 소풍 대작전") -> Dict[str, Any]:
+    logger.info("스토리 생성 시작: %s", theme)
     outline = scenario_agent(theme)
     scenes: Dict[str, Any] = {}
 
@@ -120,11 +143,14 @@ def build_story(theme: str = "짱구네 소풍 대작전") -> Dict[str, Any]:
         details = character_agent(theme, scene)
         scenes[scene["id"]] = {**details, "choices": scene.get("choices", [])}
 
-    return {
+    story = {
         "title": outline.get("title", theme),
         "start": outline.get("start_scene", outline.get("scenes", [{}])[0].get("id", "")),
         "scenes": scenes,
     }
+
+    logger.info("스토리 생성 완료: %s (장면 수: %d)", story.get("title"), len(scenes))
+    return story
 
 
 def fallback_story() -> Dict[str, Any]:
@@ -373,7 +399,7 @@ def get_story() -> dict:
     try:
         story_data = build_story()
     except Exception as exc:  # pragma: no cover - LM Studio 통신 오류 핸들링
-        print(f"[WARN] LM Studio 호출 실패, 폴백 스토리 사용: {exc}")
+        logger.warning("LM Studio 호출 실패, 폴백 스토리 사용: %s", exc)
         story_data = fallback_story()
 
     return jsonify(story_data)
