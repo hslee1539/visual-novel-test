@@ -323,6 +323,10 @@ def llm_suggest() -> tuple[Any, int] | Any:
             if isinstance(fallback_text, str) and fallback_text.strip():
                 return fallback_text.strip()
 
+            choice_reasoning = choice.get("reasoning")
+            if isinstance(choice_reasoning, str) and choice_reasoning.strip():
+                return choice_reasoning.strip()
+
         return ""
 
     def summarize_response(data: Any) -> str:
@@ -331,6 +335,16 @@ def llm_suggest() -> tuple[Any, int] | Any:
         except TypeError:
             serialized = str(data)
         return serialized[:800]
+
+    def extract_from_choices(choices: Any) -> str:
+        if not isinstance(choices, list):
+            return extract_content(choices)
+
+        for choice in choices:
+            text = extract_content(choice)
+            if text:
+                return text
+        return ""
 
     def request_content(body: dict[str, Any]) -> tuple[str, Any]:
         response = requests.post(
@@ -349,8 +363,7 @@ def llm_suggest() -> tuple[Any, int] | Any:
             )
 
         data = response.json()
-        choice = (data.get("choices") or [{}])[0]
-        return extract_content(choice), data
+        return extract_from_choices(data.get("choices") or [{}]), data
 
     try:
         errors: list[str] = []
