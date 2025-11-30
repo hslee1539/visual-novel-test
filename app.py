@@ -260,6 +260,7 @@ story_state: Dict[str, Any] = {
     "history": [],
     "current_id": None,
     "use_fallback": False,
+    "main_plan": None,
     "fallback": fallback_story(),
 }
 
@@ -288,7 +289,8 @@ def scenario_step_agent(theme: str, history: List[Dict[str, Any]], choice_text: 
     )
     prompt = (
         "너는 어린이 만화풍 비주얼 노벨의 시나리오 설계 에이전트야. "
-        "이전 선택과 장면을 참고해 다음 한 장면만 설계하고, JSON으로만 답해. "
+        "이전 선택과 장면, 메인 시나리오 목표를 참고해 다음 한 장면만 설계하고, JSON으로만 답해. "
+        "사용자가 메인 시나리오에서 벗어나지 않도록 선택지를 제안하며, 선택지 문구에 목표를 다시 상기시켜. "
         "choices는 0~2개이며 text만 포함하고, 선택지가 없으면 이야기를 종료해."
     )
     user_message = (
@@ -298,6 +300,8 @@ def scenario_step_agent(theme: str, history: List[Dict[str, Any]], choice_text: 
         "  \"choices\": [ {\"text\": \"...\"} ]\n"
         "}\n"
         f"전체 주제: {theme}\n"
+        f"메인 시나리오 개요: {story_state.get('main_plan', {}).get('overview', '개요 없음')}\n"
+        f"주요 사건 순서: {story_state.get('main_plan', {}).get('milestones', [])}\n"
         f"이전 기록:\n{history_prompt}\n"
         f"사용자가 방금 고른 선택지: {choice_text or '없음'}"
     )
@@ -322,6 +326,7 @@ def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
     prompt = (
         "너는 시나리오에 맞춰 캐릭터의 대사와 연출을 완성하는 에이전트야. "
         "대사 톤은 명랑하고 어린이 만화풍이며, CSS linear-gradient 배경과 디퓨전 이미지를 위한 프롬프트도 포함해. "
+        "대사에는 메인 시나리오 목표를 자연스럽게 한 번 상기시키는 문장을 넣어 사용자가 흐름을 따라가도록 도와줘. "
         "JSON 외의 문장은 절대 쓰지 마."
     )
     output = call_lm_studio(
@@ -339,7 +344,9 @@ def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
                     "}\n"
                     f"전체 주제: {theme}\n"
                     f"장면 요약: {scene['summary']}\n"
-                    f"선택지: {scene.get('choices', [])}"
+                    f"선택지: {scene.get('choices', [])}\n"
+                    f"메인 시나리오 개요: {story_state.get('main_plan', {}).get('overview', '개요 없음')}\n"
+                    f"주요 사건 순서: {story_state.get('main_plan', {}).get('milestones', [])}"
                 ),
             },
         ],
@@ -363,9 +370,41 @@ def reset_story_state(theme: str = "짱구네 소풍 대작전") -> None:
             "history": [],
             "current_id": None,
             "use_fallback": False,
+            "main_plan": None,
             "fallback": fallback_story(),
         }
     )
+
+
+def plan_main_scenario(theme: str) -> Dict[str, Any]:
+    prompt = (
+        "너는 어린이 만화풍 비주얼 노벨의 메인 시나리오를 설계하는 에이전트야. "
+        "이야기의 큰 흐름이 처음부터 끝까지 이어지도록 개요와 주요 사건 3~5개를 JSON으로만 작성해."
+    )
+    user_message = (
+        "다음 JSON 형식으로만 응답해:\n"
+        "{\n"
+        "  \"overview\": \"전체 개요\",\n"
+        "  \"milestones\": [\"주요 사건\", ...]\n"
+        "}\n"
+        f"전체 주제: {theme}"
+    )
+    output = call_lm_studio(
+        [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=0.5,
+    )
+    cleaned = extract_json_content(output)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.warning("메인 시나리오 설계 파싱 실패, 원문: %s", output)
+        raise exc
+
+    logger.info("메인 시나리오 설계 완료: %s", parsed.get("overview"))
+    return parsed
 
 
 def fallback_scene(choice_text: str | None) -> Dict[str, Any]:
@@ -392,6 +431,9 @@ def generate_scene(choice_text: str | None = None) -> Dict[str, Any]:
         return fallback_scene(choice_text)
 
     try:
+        if story_state.get("main_plan") is None:
+            story_state["main_plan"] = plan_main_scenario(story_state["theme"])
+
         step = scenario_step_agent(story_state["theme"], story_state["history"], choice_text)
         details = character_agent(
             story_state["theme"],
@@ -417,6 +459,16 @@ def index() -> str:
 @app.get("/api/story/start")
 def start_story() -> dict:
     reset_story_state()
+    try:
+        story_state["main_plan"] = plan_main_scenario(story_state["theme"])
+    except Exception as exc:  # pragma: no cover - LM Studio 통신 오류 핸들링
+        logger.warning("메인 시나리오 설계 실패, 폴백 시나리오로 진행: %s", exc)
+        story_state["use_fallback"] = True
+        story_state["main_plan"] = {
+            "overview": story_state["fallback"]["title"],
+            "milestones": ["폴백 시나리오 순서를 따릅니다."],
+        }
+
     scene = generate_scene()
     return jsonify({"scene": scene})
 
