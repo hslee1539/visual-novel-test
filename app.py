@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, Dict, List
 
 import requests
@@ -13,6 +14,22 @@ LM_STUDIO_URL = os.environ.get("LM_STUDIO_URL", "http://localhost:1234/v1/chat/c
 LM_STUDIO_MODEL = os.environ.get("LM_STUDIO_MODEL", "lmstudio-community/Meta-Llama-3-8B-Instruct")
 
 story_data: Dict[str, Any] | None = None
+
+
+def extract_json_content(text: str) -> str:
+    """LM Studio가 앞뒤로 설명을 붙여 보내는 경우에도 JSON 본문을 추출한다."""
+
+    # ```json ... ``` 블록 우선 처리
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fenced:
+        return fenced.group(1)
+
+    # 첫 번째 여는 중괄호부터 마지막 닫는 중괄호까지 추출
+    curly = re.search(r"\{.*\}", text, re.DOTALL)
+    if curly:
+        return curly.group(0)
+
+    return text
 
 
 def call_lm_studio(messages: List[Dict[str, str]], temperature: float = 0.6) -> str:
@@ -62,7 +79,7 @@ def scenario_agent(theme: str) -> Dict[str, Any]:
             },
         ]
     )
-    return json.loads(output)
+    return json.loads(extract_json_content(output))
 
 
 def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
@@ -92,7 +109,7 @@ def character_agent(theme: str, scene: Dict[str, Any]) -> Dict[str, str]:
         ],
         temperature=0.7,
     )
-    return json.loads(output)
+    return json.loads(extract_json_content(output))
 
 
 def build_story(theme: str = "짱구네 소풍 대작전") -> Dict[str, Any]:
@@ -355,7 +372,8 @@ def get_story() -> dict:
 
     try:
         story_data = build_story()
-    except Exception:
+    except Exception as exc:  # pragma: no cover - LM Studio 통신 오류 핸들링
+        print(f"[WARN] LM Studio 호출 실패, 폴백 스토리 사용: {exc}")
         story_data = fallback_story()
 
     return jsonify(story_data)
