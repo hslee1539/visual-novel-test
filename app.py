@@ -291,28 +291,59 @@ def llm_suggest() -> tuple[Any, int] | Any:
             json=body,
             timeout=20,
         )
-        response.raise_for_status()
+
+        if not response.ok:
+            try:
+                response_detail = response.json()
+            except ValueError:
+                response_detail = response.text
+            raise ValueError(
+                f"LM Studio 응답 오류({response.status_code}): {response_detail}"
+            )
+
         data = response.json()
         choice = data.get("choices", [{}])[0]
         message_data = choice.get("message") or {}
         return (message_data.get("content") or "").strip()
 
-    try:
-        content = request_content(request_body)
+    def retry_standard(content: str) -> str:
+        if content:
+            return content
+        retry_body = {
+            "model": request_body["model"],
+            "messages": request_body["messages"],
+            "temperature": request_body["temperature"],
+            "max_tokens": request_body["max_tokens"],
+        }
+        return request_content(retry_body)
 
-        if use_thinking and not content:
-            retry_body = {
-                "model": request_body["model"],
-                "messages": request_body["messages"],
-                "temperature": request_body["temperature"],
-                "max_tokens": request_body["max_tokens"],
-            }
-            content = request_content(retry_body)
+    try:
+        errors: list[str] = []
+        content = ""
+
+        if use_thinking:
+            try:
+                content = retry_standard(request_content(request_body))
+            except (requests.RequestException, ValueError) as exc:
+                errors.append(f"사고형 시도 실패: {exc}")
 
         if not content:
-            raise ValueError("응답 형식이 올바르지 않습니다.")
+            try:
+                content = request_content(
+                    {
+                        "model": request_body["model"],
+                        "messages": request_body["messages"],
+                        "temperature": request_body["temperature"],
+                        "max_tokens": request_body["max_tokens"],
+                    }
+                )
+            except (requests.RequestException, ValueError) as exc:
+                errors.append(f"일반 모델 시도 실패: {exc}")
 
-        return jsonify({"response": content})
+        if content:
+            return jsonify({"response": content})
+
+        raise ValueError("; ".join(errors) or "응답 형식이 올바르지 않습니다.")
     except requests.RequestException as exc:
         return (
             jsonify({"error": "LM Studio 요청에 실패했어요.", "detail": str(exc)}),
