@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -285,7 +286,43 @@ def llm_suggest() -> tuple[Any, int] | Any:
         request_body["reasoning"] = {"effort": reasoning_effort}
         request_body["max_output_tokens"] = request_body["max_tokens"]
 
-    def request_content(body: dict[str, Any]) -> str:
+    def extract_content(choice: Any) -> str:
+        if isinstance(choice, str):
+            return choice.strip()
+
+        message_data = choice.get("message") if isinstance(choice, dict) else {}
+
+        if isinstance(message_data, str):
+            return message_data.strip()
+
+        content = message_data.get("content") if isinstance(message_data, dict) else None
+
+        if isinstance(content, list):
+            joined_segments = "".join(
+                segment.get("text", "") if isinstance(segment, dict) else str(segment)
+                for segment in content
+            )
+            if joined_segments.strip():
+                return joined_segments.strip()
+
+        if isinstance(content, dict):
+            text_value = content.get("text")
+            if isinstance(text_value, str) and text_value.strip():
+                return text_value.strip()
+
+        if isinstance(content, str):
+            return content.strip()
+
+        return ""
+
+    def summarize_response(data: Any) -> str:
+        try:
+            serialized = json.dumps(data, ensure_ascii=False)
+        except TypeError:
+            serialized = str(data)
+        return serialized[:800]
+
+    def request_content(body: dict[str, Any]) -> tuple[str, Any]:
         response = requests.post(
             LM_STUDIO_ENDPOINT,
             json=body,
@@ -302,48 +339,60 @@ def llm_suggest() -> tuple[Any, int] | Any:
             )
 
         data = response.json()
-        choice = data.get("choices", [{}])[0]
-        message_data = choice.get("message") or {}
-        return (message_data.get("content") or "").strip()
-
-    def retry_standard(content: str) -> str:
-        if content:
-            return content
-        retry_body = {
-            "model": request_body["model"],
-            "messages": request_body["messages"],
-            "temperature": request_body["temperature"],
-            "max_tokens": request_body["max_tokens"],
-        }
-        return request_content(retry_body)
+        choice = (data.get("choices") or [{}])[0]
+        return extract_content(choice), data
 
     try:
         errors: list[str] = []
         content = ""
 
-        if use_thinking:
+        last_response = ""
+
+        def attempt(body: dict[str, Any], label: str) -> str:
+            nonlocal last_response
             try:
-                content = retry_standard(request_content(request_body))
+                content_result, data = request_content(body)
+                last_response = summarize_response(data)
+
+                if not content_result:
+                    errors.append(
+                        f"{label} 응답에 content가 없어요. 응답 요약: {last_response}"
+                    )
+                return content_result
             except (requests.RequestException, ValueError) as exc:
-                errors.append(f"사고형 시도 실패: {exc}")
+                errors.append(f"{label} 실패: {exc}")
+                return ""
+
+        if use_thinking:
+            content = attempt(request_body, "사고형")
+            if not content:
+                standard_body = {
+                    "model": request_body["model"],
+                    "messages": request_body["messages"],
+                    "temperature": request_body["temperature"],
+                    "max_tokens": request_body["max_tokens"],
+                }
+                content = attempt(standard_body, "사고형 재시도(일반)")
 
         if not content:
-            try:
-                content = request_content(
-                    {
-                        "model": request_body["model"],
-                        "messages": request_body["messages"],
-                        "temperature": request_body["temperature"],
-                        "max_tokens": request_body["max_tokens"],
-                    }
-                )
-            except (requests.RequestException, ValueError) as exc:
-                errors.append(f"일반 모델 시도 실패: {exc}")
+            content = attempt(
+                {
+                    "model": request_body["model"],
+                    "messages": request_body["messages"],
+                    "temperature": request_body["temperature"],
+                    "max_tokens": request_body["max_tokens"],
+                },
+                "일반 모델",
+            )
 
         if content:
             return jsonify({"response": content})
 
-        raise ValueError("; ".join(errors) or "응답 형식이 올바르지 않습니다.")
+        raise ValueError(
+            "; ".join(errors)
+            or last_response
+            or "응답 형식이 올바르지 않습니다."
+        )
     except requests.RequestException as exc:
         return (
             jsonify({"error": "LM Studio 요청에 실패했어요.", "detail": str(exc)}),

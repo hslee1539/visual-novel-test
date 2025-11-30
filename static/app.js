@@ -99,6 +99,7 @@ if (llmForm) {
         llmResult.textContent = data.response;
       } else {
         llmStatus.textContent = data.error || "문장을 불러오지 못했어요.";
+        llmResult.textContent = data.detail || "";
       }
     } catch (error) {
       console.error(error);
